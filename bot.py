@@ -3,12 +3,13 @@ from discord.ext import commands, tasks
 import yfinance as yf
 from datetime import datetime, time as dtime
 import pytz
+import os
 
 # ==============================
 # INSTÄLLNINGAR
 # ==============================
 
-TOKEN = "MTQ3NDQ2OTEzNzQzMzc1OTgxNA.GXjclz.HzeXWfM6SiIPcrDfwW6Dy5l2w3B92Xe1mgKGoU"   # <-- Sätt in din token
+TOKEN = os.getenv("DISCORD_TOKEN")   # <-- Sätt in din token
 CHANNEL_ID = 1474470635198484716   # <-- Sätt in ditt kanal-ID
 TICKER = "HAMLET-B.ST"
 
