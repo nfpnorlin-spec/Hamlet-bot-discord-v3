@@ -9,9 +9,9 @@ import os
 # INSTÄLLNINGAR
 # ==============================
 
-TOKEN = os.getenv("DISCORD_TOKEN")   # <-- Sätt in din token
-CHANNEL_ID = 1474470635198484716   # <-- Sätt in ditt kanal-ID
-TICKER = "HAMLET-B.ST"
+TOKEN = os.getenv("DISCORD_TOKEN")    # Din token hämtas från miljövariabel
+CHANNEL_ID = 1474470635198484716      # Discord-kanal-ID där meddelandet ska skickas
+TICKER = "HAMLET-B.ST"                # Hamlet Biopharma ticker
 
 tz = pytz.timezone("Europe/Stockholm")
 
@@ -45,19 +45,19 @@ def get_days_until_report():
 
 async def post_opening():
     today = datetime.now(tz).date()
-    if today.weekday() >= 5:   # Hoppa över helger
+    if today.weekday() >= 5:  # Hoppa över helger
         print("Helg – ingen öppning")
         return
 
     ticker = yf.Ticker(TICKER)
     data = ticker.info
 
-    open_price = data.get("regularMarketOpen")
-    volume = data.get("volume")
-    market_cap = data.get("marketCap")
+    open_price = data.get("regularMarketOpen", "N/A")
+    volume = data.get("volume", "N/A")
+    market_cap = data.get("marketCap", "N/A")
 
-    market_cap_msek = market_cap / 1_000_000 if market_cap else "N/A"
-    volume_formatted = f"{volume:,}".replace(",", " ") if volume else "N/A"
+    market_cap_msek = f"{market_cap/1_000_000:,.0f} MSEK" if market_cap != "N/A" else "N/A"
+    volume_formatted = f"{volume:,}".replace(",", " ") if volume != "N/A" else "N/A"
 
     days_left = get_days_until_report()
     next_report = min([d for d in report_dates if d.date() >= today], default="N/A")
@@ -68,45 +68,50 @@ async def post_opening():
     )
     embed.add_field(name="Dagar till rapport", value=str(days_left), inline=True)
     embed.add_field(name="Nästa rapport", value=next_report if next_report != "N/A" else "N/A", inline=True)
-    embed.add_field(name="Volatilitet", value="N/A", inline=True)  # Kan uppdateras senare
+    embed.add_field(name="Volatilitet", value="N/A", inline=True)
     embed.add_field(name="Postad", value=datetime.now(tz).strftime("%Y-%m-%d %H:%M %Z"), inline=False)
 
     channel = bot.get_channel(CHANNEL_ID)
-    await channel.send(embed=embed)
+    if channel:
+        await channel.send(embed=embed)
 
 async def post_closing():
     today = datetime.now(tz).date()
-    if today.weekday() >= 5:   # Hoppa över helger
+    if today.weekday() >= 5:  # Hoppa över helger
         print("Helg – ingen stängning")
         return
 
     ticker = yf.Ticker(TICKER)
     data = ticker.info
 
-    price = data.get("regularMarketPrice")
-    prev_close = data.get("regularMarketPreviousClose")
-    volume = data.get("volume")
-    market_cap = data.get("marketCap")
-    day_low = data.get("dayLow")
-    day_high = data.get("dayHigh")
+    price = data.get("regularMarketPrice", "N/A")
+    prev_close = data.get("regularMarketPreviousClose", "N/A")
+    volume = data.get("volume", "N/A")
+    market_cap = data.get("marketCap", "N/A")
+    day_low = data.get("dayLow", "N/A")
+    day_high = data.get("dayHigh", "N/A")
 
-    change_percent = ((price - prev_close) / prev_close) * 100 if price and prev_close else 0
+    if price != "N/A" and prev_close != "N/A":
+        change_percent = ((price - prev_close) / prev_close) * 100
+    else:
+        change_percent = 0
 
-    market_cap_msek = market_cap / 1_000_000 if market_cap else "N/A"
-    volume_msek = volume * price / 1_000_000 if price and volume else "N/A"
+    market_cap_msek = f"{market_cap/1_000_000:,.1f} MSEK" if market_cap != "N/A" else "N/A"
+    volume_msek = f"{volume*price/1_000_000:,.1f} MSEK" if price != "N/A" and volume != "N/A" else "N/A"
 
     embed = discord.Embed(
         title=f"{TICKER} • **Stängning 💤**",
         color=0xFFA500
     )
     embed.add_field(name="Kurs", value=f"{price} SEK ({change_percent:.2f}%)", inline=True)
-    embed.add_field(name="Börsvärde", value=f"~{market_cap_msek:,.1f} MSEK", inline=True)
+    embed.add_field(name="Börsvärde", value=market_cap_msek, inline=True)
     embed.add_field(name="Dagens intervall", value=f"{day_low} – {day_high} SEK", inline=True)
-    embed.add_field(name="Omsättning", value=f"{volume_msek:,.1f} MSEK ({volume:,} st)", inline=True)
+    embed.add_field(name="Omsättning", value=f"{volume_msek} ({volume:,} st)" if volume != "N/A" else "N/A", inline=True)
     embed.add_field(name="Postad", value=datetime.now(tz).strftime("%Y-%m-%d %H:%M %Z"), inline=False)
 
     channel = bot.get_channel(CHANNEL_ID)
-    await channel.send(embed=embed)
+    if channel:
+        await channel.send(embed=embed)
 
 # ==============================
 # SCHEMALÄGGNING
