@@ -1,0 +1,5 @@
+discord.py
+yfinance
+requests
+apscheduler
+pytz
