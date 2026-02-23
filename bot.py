@@ -9,9 +9,9 @@ import os
 # INSTÄLLNINGAR
 # ==============================
 
-TOKEN = os.getenv("DISCORD_TOKEN")    # Din token hämtas från miljövariabel
-CHANNEL_ID = 1474470635198484716      # Discord-kanal-ID där meddelandet ska skickas
-TICKER = "HAMLET-B.ST"                # Hamlet Biopharma ticker
+TOKEN = os.getenv("DISCORD_TOKEN")
+CHANNEL_ID = 1474470635198484716
+TICKER = "HAMLET-B.ST"
 
 tz = pytz.timezone("Europe/Stockholm")
 
@@ -40,110 +40,186 @@ def get_days_until_report():
     return "Ingen kommande rapport"
 
 # ==============================
-# ÖPPNING / STÄNGNING
+# ÖPPNINGSMEDDELANDE (09:00)
 # ==============================
 
 async def post_opening():
     today = datetime.now(tz).date()
-    if today.weekday() >= 5:  # Hoppa över helger
+
+    if today.weekday() >= 5:
         print("Helg – ingen öppning")
         return
 
     ticker = yf.Ticker(TICKER)
     data = ticker.info
 
-    last_close = data.get("regularMarketPreviousClose", "N/A")
+    last_close = data.get("regularMarketPreviousClose")
 
     days_left = get_days_until_report()
-    next_report = min([d for d in report_dates if d.date() >= today], default="N/A")
+    next_report = min(
+        [d for d in report_dates if d.date() >= today],
+        default=None
+    )
 
     embed = discord.Embed(
-        title=f"{TICKER} • **Öppning 🛎️**",
-        color=0xFFA500
+        title=f"{TICKER} • Öppning 🛎️",
+        color=0x2F3136
     )
-    embed.add_field(name="Senaste stängning", value=f"{last_close} SEK" if last_close != "N/A" else "N/A", inline=True)
-    embed.add_field(name="Dagar till rapport", value=str(days_left), inline=True)
-    embed.add_field(name="Nästa rapport", value=next_report if next_report != "N/A" else "N/A", inline=True)
-    embed.add_field(name="Volatilitet", value="N/A", inline=True)
-    embed.add_field(name="Postad", value=datetime.now(tz).strftime("%Y-%m-%d %H:%M %Z"), inline=False)
+
+    embed.add_field(
+        name="Senaste stängning",
+        value=f"{last_close} SEK" if last_close else "N/A",
+        inline=True
+    )
+
+    embed.add_field(
+        name="Dagar till rapport",
+        value=str(days_left),
+        inline=True
+    )
+
+    embed.add_field(
+        name="Nästa rapport",
+        value=next_report.date() if next_report else "N/A",
+        inline=True
+    )
+
+    embed.add_field(
+        name="Postad",
+        value=datetime.now(tz).strftime("%Y-%m-%d %H:%M %Z"),
+        inline=False
+    )
 
     channel = bot.get_channel(CHANNEL_ID)
     if channel:
         await channel.send(embed=embed)
 
+# ==============================
+# STÄNGNINGSMEDDELANDE (17:50)
+# ==============================
+
 async def post_closing():
     today = datetime.now(tz).date()
-    if today.weekday() >= 5:  # Hoppa över helger
+
+    if today.weekday() >= 5:
         print("Helg – ingen stängning")
         return
 
     ticker = yf.Ticker(TICKER)
     data = ticker.info
 
-    price = data.get("regularMarketPrice", "N/A")
-    prev_close = data.get("regularMarketPreviousClose", "N/A")
-    volume = data.get("volume", "N/A")
-    market_cap = data.get("marketCap", "N/A")
-    day_low = data.get("dayLow", "N/A")
-    day_high = data.get("dayHigh", "N/A")
+    price = data.get("regularMarketPrice")
+    prev_close = data.get("regularMarketPreviousClose")
+    volume = data.get("volume")
+    market_cap = data.get("marketCap")
+    day_low = data.get("dayLow")
+    day_high = data.get("dayHigh")
 
-    if price != "N/A" and prev_close != "N/A":
+    if price and prev_close:
         change_percent = ((price - prev_close) / prev_close) * 100
     else:
-        change_percent = 0
+        change_percent = None
 
-    market_cap_msek = f"{market_cap/1_000_000:,.1f} MSEK" if market_cap != "N/A" else "N/A"
-    volume_msek = f"{volume*price/1_000_000:,.1f} MSEK" if price != "N/A" and volume != "N/A" else "N/A"
+    market_cap_msek = (
+        f"{market_cap/1_000_000:,.1f} MSEK"
+        if market_cap else "N/A"
+    )
+
+    volume_msek = (
+        f"{volume*price/1_000_000:,.1f} MSEK"
+        if volume and price else "N/A"
+    )
 
     # ==============================
     # VWAP-BERÄKNING
     # ==============================
+
     try:
         df = ticker.history(period="1d", interval="1m")
-        if not df.empty:
+        if not df.empty and df["Volume"].sum() != 0:
             vwap = (df["Close"] * df["Volume"]).sum() / df["Volume"].sum()
         else:
             vwap = None
     except Exception as e:
-        print("Fel vid VWAP-beräkning:", e)
+        print("VWAP-fel:", e)
         vwap = None
 
     embed = discord.Embed(
-        title=f"{TICKER} • **Stängning 💤**",
-        color=0xFFA500
+        title=f"{TICKER} • Stängning 💤",
+        color=0x2F3136
     )
-    embed.add_field(name="Kurs", value=f"{price} SEK ({change_percent:.2f}%)", inline=True)
-    embed.add_field(name="Börsvärde", value=market_cap_msek, inline=True)
-    embed.add_field(name="Dagens intervall", value=f"{day_low} – {day_high} SEK", inline=True)
-    embed.add_field(name="Omsättning", value=f"{volume_msek} ({volume:,} st)" if volume != "N/A" else "N/A", inline=True)
-    embed.add_field(name="VWAP", value=f"{vwap:.2f} SEK" if vwap else "N/A", inline=True)
-    embed.add_field(name="Postad", value=datetime.now(tz).strftime("%Y-%m-%d %H:%M %Z"), inline=False)
+
+    embed.add_field(
+        name="Kurs",
+        value=f"{price} SEK ({change_percent:.2f}%)"
+        if change_percent is not None else "N/A",
+        inline=True
+    )
+
+    embed.add_field(
+        name="Börsvärde",
+        value=market_cap_msek,
+        inline=True
+    )
+
+    embed.add_field(
+        name="Dagens intervall",
+        value=f"{day_low} – {day_high} SEK"
+        if day_low and day_high else "N/A",
+        inline=True
+    )
+
+    embed.add_field(
+        name="Omsättning",
+        value=f"{volume_msek} ({volume:,} st)"
+        if volume and price else "N/A",
+        inline=True
+    )
+
+    embed.add_field(
+        name="VWAP",
+        value=f"{vwap:.2f} SEK" if vwap else "N/A",
+        inline=True
+    )
+
+    embed.add_field(
+        name="Postad",
+        value=datetime.now(tz).strftime("%Y-%m-%d %H:%M %Z"),
+        inline=False
+    )
 
     channel = bot.get_channel(CHANNEL_ID)
     if channel:
         await channel.send(embed=embed)
 
 # ==============================
-# SCHEMALÄGGNING
+# SCHEMALÄGGNING (MED TIMEZONE FIX)
 # ==============================
 
-@tasks.loop(time=[dtime(hour=9, minute=0)])
+@tasks.loop(time=[dtime(hour=9, minute=25, tzinfo=tz)])
 async def schedule_opening():
     await post_opening()
 
-@tasks.loop(time=[dtime(hour=17, minute=50)])
+@tasks.loop(time=[dtime(hour=17, minute=50, tzinfo=tz)])
 async def schedule_closing():
     await post_closing()
 
 # ==============================
-# ON_READY
+# TESTKOMMANDO
+# ==============================
+
+@bot.command()
+async def test(ctx):
+    await post_opening()
+    await post_closing()
+
+# ==============================
+# ON READY
 # ==============================
 
 @bot.event
 async def on_ready():
     print(f"Inloggad som {bot.user}")
-    await post_opening()   # Skicka direkt vid start
-    await post_closing()   # Skicka direkt vid start
     schedule_opening.start()
     schedule_closing.start()
 
