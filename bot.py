@@ -1,5 +1,5 @@
 import discord
-from discord.ext import commands, tasks
+from discord.ext import tasks
 import yfinance as yf
 from datetime import datetime, time as dtime
 import pytz
@@ -26,9 +26,7 @@ report_dates = [
 # ==============================
 
 intents = discord.Intents.default()
-intents.message_content = True
-
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = discord.Client(intents=intents)
 
 # ==============================
 # HJÄLPFUNKTIONER
@@ -50,7 +48,7 @@ def get_color(change):
         return 0xf39c12  # orange
 
 # ==============================
-# ÖPPNING
+# ÖPPNING 09:00
 # ==============================
 
 async def post_opening():
@@ -62,14 +60,16 @@ async def post_opening():
     data = ticker.info
 
     last_close = data.get("regularMarketPreviousClose")
-    prev_close = data.get("regularMarketPreviousClose")
 
     days_left = get_days_until_report()
-    next_report = min([d for d in report_dates if d.date() >= today], default=None)
+    next_report = min(
+        [d for d in report_dates if d.date() >= today],
+        default=None
+    )
 
     embed = discord.Embed(
         title=f"{TICKER} • Öppning 🛎️",
-        description="Marknaden öppnar – gårdagens stängning:",
+        description="Gårdagens stängning:",
         color=0xf39c12
     )
 
@@ -94,7 +94,7 @@ async def post_opening():
         await channel.send(embed=embed)
 
 # ==============================
-# STÄNGNING + VWAP
+# STÄNGNING 17:50
 # ==============================
 
 async def post_closing():
@@ -122,7 +122,7 @@ async def post_closing():
     market_cap_msek = f"{market_cap/1_000_000:,.1f} MSEK" if market_cap else "N/A"
     volume_msek = f"{volume*price/1_000_000:,.1f} MSEK" if volume and price else "N/A"
 
-    # VWAP
+    # ===== VWAP =====
     try:
         df = ticker.history(period="1d", interval="1m")
         if not df.empty:
@@ -139,13 +139,13 @@ async def post_closing():
 
     embed.add_field(
         name="Kurs",
-        value=f"**{price} SEK** ({change_percent:.2f}%)",
+        value=f"**{price} SEK** ({change_percent:.2f}%)" if price else "N/A",
         inline=False
     )
 
     embed.add_field(
         name="Dagens intervall",
-        value=f"{day_low} – {day_high} SEK",
+        value=f"{day_low} – {day_high} SEK" if day_low and day_high else "N/A",
         inline=True
     )
 
@@ -176,7 +176,7 @@ async def post_closing():
         await channel.send(embed=embed)
 
 # ==============================
-# SCHEMA (Svensk tid)
+# SCHEMA
 # ==============================
 
 @tasks.loop(time=[dtime(hour=8, minute=53, tzinfo=tz)])
@@ -185,15 +185,6 @@ async def schedule_opening():
 
 @tasks.loop(time=[dtime(hour=17, minute=45, tzinfo=tz)])
 async def schedule_closing():
-    await post_closing()
-
-# ==============================
-# TESTKOMMANDO
-# ==============================
-
-@bot.command()
-async def test(ctx):
-    await post_opening()
     await post_closing()
 
 # ==============================
