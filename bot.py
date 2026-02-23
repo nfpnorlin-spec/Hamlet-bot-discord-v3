@@ -196,7 +196,7 @@ async def post_closing():
 # SCHEMALÄGGNING (MED TIMEZONE FIX)
 # ==============================
 
-@tasks.loop(time=[dtime(hour=9, minute=25, tzinfo=tz)])
+@tasks.loop(time=[dtime(hour=8, minute=55, tzinfo=tz)])
 async def schedule_opening():
     await post_opening()
 
