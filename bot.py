@@ -191,11 +191,11 @@ async def post_closing():
 # SCHEMALÄGGNING
 # ==============================
 
-@tasks.loop(time=[dtime(hour=8, minute=53)])
+@tasks.loop(time=[dtime(hour=8, minute=53, tzinfo=tz)])
 async def schedule_opening():
     await post_opening()
 
-@tasks.loop(time=[dtime(hour=17, minute=45)])
+@tasks.loop(time=[dtime(hour=17, minute=45, tzinfo=tz)])
 async def schedule_closing():
     await post_closing()
 
