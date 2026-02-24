@@ -1,5 +1,5 @@
 import discord
-from discord.ext import tasks
+from discord.ext import commands, tasks
 import yfinance as yf
 from datetime import datetime, time as dtime
 import pytz
@@ -22,11 +22,11 @@ report_dates = [
 ]
 
 # ==============================
-# BOT SETUP
+# BOT SETUP (inga privileged intents)
 # ==============================
 
 intents = discord.Intents.default()
-bot = discord.Client(intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ==============================
 # HJÄLPFUNKTIONER
@@ -38,14 +38,6 @@ def get_days_until_report():
     if future_reports:
         return (future_reports[0].date() - today).days
     return "Ingen kommande rapport"
-
-def get_color(change):
-    if change > 0:
-        return 0x2ecc71  # grön
-    elif change < 0:
-        return 0xe74c3c  # röd
-    else:
-        return 0xf39c12  # orange
 
 # ==============================
 # ÖPPNING 09:00
@@ -62,31 +54,35 @@ async def post_opening():
     last_close = data.get("regularMarketPreviousClose")
 
     days_left = get_days_until_report()
-    next_report = min(
-        [d for d in report_dates if d.date() >= today],
-        default=None
-    )
+    next_report = min([d for d in report_dates if d.date() >= today], default=None)
 
     embed = discord.Embed(
         title=f"{TICKER} • Öppning 🛎️",
-        description="Gårdagens stängning:",
-        color=0xf39c12
+        color=0xF5A623  # Orange
     )
 
     embed.add_field(
         name="Senaste stängning",
-        value=f"**{last_close} SEK**" if last_close else "N/A",
+        value=f"{last_close:.2f} SEK" if last_close else "N/A",
         inline=False
     )
 
     embed.add_field(
-        name="Rapport",
-        value=f"{days_left} dagar kvar\nNästa: {next_report.date() if next_report else 'N/A'}",
+        name="Dagar till rapport",
+        value=str(days_left),
         inline=False
     )
 
-    embed.set_footer(
-        text=f"Hamlet bot v2 • {datetime.now(tz).strftime('%Y-%m-%d %H:%M %Z')}"
+    embed.add_field(
+        name="Nästa rapport",
+        value=next_report.strftime("%Y-%m-%d") if next_report else "N/A",
+        inline=False
+    )
+
+    embed.add_field(
+        name="Postad",
+        value=datetime.now(tz).strftime("%Y-%m-%d %H:%M CET"),
+        inline=False
     )
 
     channel = bot.get_channel(CHANNEL_ID)
@@ -112,20 +108,34 @@ async def post_closing():
     day_low = data.get("dayLow")
     day_high = data.get("dayHigh")
 
+    # Kursförändring
     if price and prev_close:
         change_percent = ((price - prev_close) / prev_close) * 100
     else:
         change_percent = 0
 
-    color = get_color(change_percent)
+    # Dynamisk färg (grön/röd)
+    if change_percent > 0:
+        embed_color = 0x2ECC71  # Grön
+    elif change_percent < 0:
+        embed_color = 0xE74C3C  # Röd
+    else:
+        embed_color = 0xF5A623  # Orange neutral
 
+    # Börsvärde
     market_cap_msek = f"{market_cap/1_000_000:,.1f} MSEK" if market_cap else "N/A"
-    volume_msek = f"{volume*price/1_000_000:,.1f} MSEK" if volume and price else "N/A"
 
-    # ===== VWAP =====
+    # Omsättning
+    volume_msek = f"{volume*price/1_000_000:,.1f} MSEK" if price and volume else "N/A"
+    volume_formatted = f"{volume:,}".replace(",", " ") if volume else "N/A"
+
+    # ==============================
+    # VWAP-BERÄKNING
+    # ==============================
+
     try:
         df = ticker.history(period="1d", interval="1m")
-        if not df.empty:
+        if not df.empty and df["Volume"].sum() != 0:
             vwap = (df["Close"] * df["Volume"]).sum() / df["Volume"].sum()
         else:
             vwap = None
@@ -134,25 +144,13 @@ async def post_closing():
 
     embed = discord.Embed(
         title=f"{TICKER} • Stängning 💤",
-        color=color
+        color=embed_color
     )
 
     embed.add_field(
         name="Kurs",
-        value=f"**{price} SEK** ({change_percent:.2f}%)" if price else "N/A",
+        value=f"{price:.2f} SEK ({change_percent:.2f}%)" if price else "N/A",
         inline=False
-    )
-
-    embed.add_field(
-        name="Dagens intervall",
-        value=f"{day_low} – {day_high} SEK" if day_low and day_high else "N/A",
-        inline=True
-    )
-
-    embed.add_field(
-        name="Omsättning",
-        value=f"{volume_msek} ({volume:,} st)" if volume else "N/A",
-        inline=True
     )
 
     embed.add_field(
@@ -162,13 +160,27 @@ async def post_closing():
     )
 
     embed.add_field(
+        name="Dagens intervall",
+        value=f"{day_low:.2f} – {day_high:.2f} SEK" if day_low and day_high else "N/A",
+        inline=False
+    )
+
+    embed.add_field(
+        name="Omsättning",
+        value=f"{volume_msek} ({volume_formatted} st)" if volume else "N/A",
+        inline=False
+    )
+
+    embed.add_field(
         name="VWAP",
         value=f"{vwap:.2f} SEK" if vwap else "N/A",
         inline=False
     )
 
-    embed.set_footer(
-        text=f"Hamlet bot v2 • {datetime.now(tz).strftime('%Y-%m-%d %H:%M %Z')}"
+    embed.add_field(
+        name="Postad",
+        value=datetime.now(tz).strftime("%Y-%m-%d %H:%M CET"),
+        inline=False
     )
 
     channel = bot.get_channel(CHANNEL_ID)
@@ -176,33 +188,29 @@ async def post_closing():
         await channel.send(embed=embed)
 
 # ==============================
-# SCHEMA
+# SCHEMALÄGGNING
 # ==============================
 
-@tasks.loop(time=[dtime(hour=8, minute=53, tzinfo=tz)])
+@tasks.loop(time=[dtime(hour=8, minute=53)])
 async def schedule_opening():
     await post_opening()
 
-@tasks.loop(time=[dtime(hour=17, minute=45, tzinfo=tz)])
+@tasks.loop(time=[dtime(hour=17, minute=45)])
 async def schedule_closing():
     await post_closing()
 
 # ==============================
-# READY
+# ON_READY
 # ==============================
 
 @bot.event
 async def on_ready():
     print(f"Inloggad som {bot.user}")
-
-    if not schedule_opening.is_running():
-        schedule_opening.start()
-
-    if not schedule_closing.is_running():
-        schedule_closing.start()
+    schedule_opening.start()
+    schedule_closing.start()
 
 # ==============================
-# START
+# STARTA BOTEN
 # ==============================
 
 bot.run(TOKEN)
