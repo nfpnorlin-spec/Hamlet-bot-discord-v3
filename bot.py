@@ -49,16 +49,20 @@ async def post_opening():
         return
 
     ticker = yf.Ticker(TICKER)
-    data = ticker.info
 
-    last_close = data.get("regularMarketPreviousClose")
+    # HÄR ÄR ENDA ÄNDRINGEN (history istället för info)
+    df = ticker.history(period="5d", interval="1d")
+    if not df.empty:
+        last_close = df["Close"].iloc[-1]
+    else:
+        last_close = None
 
     days_left = get_days_until_report()
     next_report = min([d for d in report_dates if d.date() >= today], default=None)
 
     embed = discord.Embed(
         title=f"{TICKER} • Öppning 🛎️",
-        color=0xF5A623  # Orange
+        color=0xF5A623
     )
 
     embed.add_field(
@@ -108,30 +112,22 @@ async def post_closing():
     day_low = data.get("dayLow")
     day_high = data.get("dayHigh")
 
-    # Kursförändring
     if price and prev_close:
         change_percent = ((price - prev_close) / prev_close) * 100
     else:
         change_percent = 0
 
-    # Dynamisk färg (grön/röd)
     if change_percent > 0:
-        embed_color = 0x2ECC71  # Grön
+        embed_color = 0x2ECC71
     elif change_percent < 0:
-        embed_color = 0xE74C3C  # Röd
+        embed_color = 0xE74C3C
     else:
-        embed_color = 0xF5A623  # Orange neutral
+        embed_color = 0xF5A623
 
-    # Börsvärde
     market_cap_msek = f"{market_cap/1_000_000:,.1f} MSEK" if market_cap else "N/A"
 
-    # Omsättning
     volume_msek = f"{volume*price/1_000_000:,.1f} MSEK" if price and volume else "N/A"
     volume_formatted = f"{volume:,}".replace(",", " ") if volume else "N/A"
-
-    # ==============================
-    # VWAP-BERÄKNING
-    # ==============================
 
     try:
         df = ticker.history(period="1d", interval="1m")
