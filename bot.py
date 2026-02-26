@@ -10,7 +10,7 @@ import os
 # ==============================
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-CHANNEL_ID = 1474470635198484716
+CHANNEL_ID = 1476628955468402829
 TICKER = "HAMLET-B.ST"
 
 tz = pytz.timezone("Europe/Stockholm")
